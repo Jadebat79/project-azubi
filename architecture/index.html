@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TTS – S3 + CloudFront Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --ink:#0f172a; --muted:#475569; --indigo:#4f46e5; --bg:#f8fafc;
+      --chip:#eef2ff; --chiptext:#3730a3;
+    }
+    html, body { height: 100%; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: radial-gradient(1000px 600px at 10% -10%, #e0e7ff, transparent),
+                  radial-gradient(800px 400px at 90% 10%, #bae6fd, transparent),
+                  var(--bg); color: var(--ink);
+      display: grid; place-items: start center; padding: 40px 16px;
+    }
+    .wrap { width: min(1100px, 100%); }
+    .hero { text-align: center; margin-bottom: 18px; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:8px; }
+    .chip { background: var(--chip); color: var(--chiptext); padding:6px 10px; border-radius:999px; font-weight:600; font-size:12px; }
+    .grid { display:grid; grid-template-columns: 2fr 1fr; gap:16px; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; box-shadow: 0 10px 30px rgba(2,6,23,.06); }
+    textarea, select, button { font: inherit; }
+    textarea { width: 100%; height: 180px; border:1px solid #e5e7eb; border-radius:12px; padding:10px; }
+    select { width: 100%; border:1px solid #e5e7eb; border-radius:12px; padding:8px; }
+    .row { display:flex; gap:12px; align-items: end; flex-wrap: wrap; }
+    .btn { background: var(--indigo); color:#fff; border:none; border-radius:12px; padding:10px 16px; font-weight:700; cursor:pointer; }
+    .btn:disabled { background:#c7d2fe; cursor:not-allowed; }
+    .ghost { background:#fff; color: var(--ink); border:1px solid #e5e7eb; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .err { background:#fef3c7; color:#a16207; border:1px solid #facc15; padding:10px; border-radius:10px; margin-top:8px; }
+    audio { width: 100%; }
+    footer { text-align:center; color:#334155; font-size: 12px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div style="display:inline-flex;gap:8px;align-items:center;background:#ffffff80;padding:6px 12px;border-radius:999px;">
+        <div>🎙️</div><div><strong>Text → Speech Studio</strong></div>
+      </div>
+      <h1 style="margin:10px 0 4px 0; font-size:40px;">Juliet A Adjei</h1>
+      <div>DevOps Engineer • AWS SAA Candidate</div>
+      <div class="chips">
+        <span class="chip">API Gateway</span><span class="chip">Lambda</span><span class="chip">Polly</span>
+        <span class="chip">S3</span><span class="chip">CloudFront</span><span class="chip">Amplify</span>
+        <span class="chip">Terraform</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <form id="f">
+          <label>Your text</label>
+          <textarea id="t" placeholder="Type or paste text to synthesize…"></textarea>
+
+          <div class="row" style="margin-top:10px;">
+            <div style="flex:1;">
+              <label>Voice</label>
+              <select id="v"></select>
+              <div class="muted" id="count">0 / 3000 characters</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn ghost" id="clear">Clear</button>
+              <button class="btn" id="go">Generate</button>
+            </div>
+          </div>
+        </form>
+
+        <div id="error" class="err" style="display:none;"></div>
+
+        <div id="result" style="margin-top:14px;display:none;" class="card">
+          <h3>Result</h3>
+          <audio id="audio" controls></audio>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <a id="download" class="btn" href="#" download="tts.mp3">Download MP3</a>
+            <button id="copy" class="btn ghost" type="button">Copy link</button>
+          </div>
+          <div class="muted">Pre-signed links expire automatically.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>About this demo</h3>
+        <p class="muted">
+          Private S3 bucket (Block Public Access = ON) served by CloudFront with OAC (only CloudFront can read).
+          API calls go to API Gateway → Lambda (Python) → Polly → S3 (pre-signed URLs).
+        </p>
+      </div>
+    </div>
+
+    <footer>© <span id="yr"></span> Juliet A Adjei. All rights reserved.</footer>
+  </div>
+
+  <script>
+    // 1) If you want this page to call your API, set the API base here:
+    //    Also add your CloudFront domain to API Gateway CORS (Allowed origins).
+    const API = ""; // e.g. "https://abc123.execute-api.us-east-1.amazonaws.com"
+    const maxChars = 3000;
+
+    const sel = (q) => document.querySelector(q);
+    const voicesSel = sel('#v');
+    const txt = sel('#t');
+    const count = sel('#count');
+    const errBox = sel('#error');
+    const resBox = sel('#result');
+    const audio = sel('#audio');
+    const dl = sel('#download');
+    const copyBtn = sel('#copy');
+
+    function setErr(msg){ errBox.style.display = msg ? 'block' : 'none'; errBox.textContent = msg || ''; }
+
+    txt.addEventListener('input', () => {
+      count.textContent = `${txt.value.length} / ${maxChars} characters`;
+    });
+    sel('#clear').onclick = () => { txt.value = ""; count.textContent = "0 / 3000 characters"; setErr(""); resBox.style.display="none"; };
+
+    async function loadVoices(){
+      if(!API){ // no API configured – just fill some defaults so the UI looks alive
+        ["Joanna","Matthew","Amy","Brian","Emma","Ivy","Justin","Kendra","Salli"].forEach(v=>{
+          const o=document.createElement('option'); o.value=v; o.textContent=v; voicesSel.appendChild(o);
+        });
+        return;
+      }
+      try {
+        const r = await fetch(`${API}/voices`);
+        const d = await r.json();
+        (d.voices||[]).forEach(v=>{
+          const o=document.createElement('option'); o.value=v; o.textContent=v; voicesSel.appendChild(o);
+        });
+      } catch(e){ setErr("Could not load voices (check CORS + API URL)."); }
+    }
+
+    sel('#f').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      if(!API){ setErr("API not configured in this demo page."); return; }
+      setErr(""); resBox.style.display="none";
+      try{
+        const r = await fetch(`${API}/synthesize`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ text: txt.value, voice: voicesSel.value })
+        });
+        const d = await r.json();
+        if(!r.ok || !d.url){ throw new Error(d.error||"Synthesis failed"); }
+        audio.src = d.url; dl.href = d.url; resBox.style.display="block";
+      }catch(e){ setErr(e.message); }
+    });
+
+    copyBtn.onclick = async ()=>{
+      try{ await navigator.clipboard.writeText(dl.href); setErr("Link copied (it expires)."); setTimeout(()=>setErr(""),1500); }
+      catch{ setErr("Could not copy link."); setTimeout(()=>setErr(""),1500); }
+    };
+
+    loadVoices();
+    sel('#yr').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
