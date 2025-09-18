@@ -39,31 +39,32 @@ variable "uploads_retention_days" {
   default = 30
 }
 
-# # Amplify hosting
-# variable "app_name" {
-#   type        = string
-#   description = "Amplify App name"
-#   default     = "tts-web"
-# }
+# Amplify hosting
+variable "app_name" {
+  type        = string
+  description = "Amplify App name"
+  default     = "tts-web"
+}
 
-# variable "github_token" {
-#   type      = string
-#   sensitive = true
-# }
+variable "github_token" {
+  type      = string
+  sensitive = true
+}
 
-# variable "repo" {
-#   type = string
-# } # e.g. "https://github.com/jade/tts-capstone"
+variable "repo" {
+  type = string
+  default = "https://github.com/Jadebat79/project-azubi"
+} 
 
-# variable "branch" {
-#   type    = string
-#   default = "main"
-# }
+variable "branch" {
+  type    = string
+  default = "main"
+}
 
-# variable "app_root" {
-#   type    = string
-#   default = "frontend/tts-web"
-# } # path to your Vite app
+variable "app_root" {
+  type    = string
+  default = "tts-web/"
+} # path to your Vite app
 
 
 # # S3-hosting
